@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Console interativo para desenvolvimento
+require_relative '../lib/application'
+require 'irb'
+
+# Inicia o console IRB com o contexto da aplicação carregado
+IRB.start
+
+
