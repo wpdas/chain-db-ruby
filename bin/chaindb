@@ -1,0 +1,163 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'fileutils'
+
+class ChainDbGenerator
+  def self.run(args)
+    new.run(args)
+  end
+
+  def run(args)
+    command = args[0]
+    resource = args[1]
+    name = args[2]
+
+    case command
+    when 'generate'
+      generate(resource, name, args[3..-1])
+    else
+      puts "Unknown command: #{command}"
+      puts 'Usage: chaindb generate model ModelName field:type field:type ...'
+      exit 1
+    end
+  end
+
+  private
+
+  def generate(resource, name, fields)
+    case resource
+    when 'model'
+      generate_model(name, fields)
+    else
+      puts "Unknown resource: #{resource}"
+      puts 'Available resources: model'
+      exit 1
+    end
+  end
+
+  def generate_model(model_name, fields)
+    # Criar diretório app/models se não existir
+    models_dir = File.join(Dir.pwd, 'app', 'models')
+    FileUtils.mkdir_p(models_dir)
+
+    # Nome do arquivo (downcase, singular)
+    file_name = model_name.downcase + '.rb'
+    file_path = File.join(models_dir, file_name)
+
+    # Verificar se o arquivo já existe
+    if File.exist?(file_path)
+      puts "Erro: O arquivo #{file_path} já existe!"
+      exit 1
+    end
+
+    # Nome da tabela (pluralizado, downcase)
+    table_name = pluralize(model_name.downcase)
+
+    # Parse dos campos
+    parsed_fields = parse_fields(fields)
+
+    # Gerar o conteúdo do arquivo
+    content = generate_model_content(model_name, parsed_fields, table_name)
+
+    # Escrever o arquivo
+    File.write(file_path, content)
+
+    puts "Model created: #{file_path}"
+  end
+
+  def parse_fields(fields)
+    fields.map do |field|
+      parts = field.split(':')
+      if parts.length != 2
+        puts "Error: Invalid format for field '#{field}'. Use 'field:type'"
+        exit 1
+      end
+      { name: parts[0], type: parts[1] }
+    end
+  end
+
+  def generate_model_content(model_name, fields, table_name)
+    # Gerar attr_accessor (campos + doc_id no final)
+    attr_names = fields.map { |f| ":#{f[:name]}" }.join(', ')
+    attr_accessor_line = "attr_accessor #{attr_names}, :doc_id"
+
+    # Gerar parâmetros do initialize (campos + doc_id e table_name no final)
+    init_params = fields.map do |f|
+      default_value = default_value_for_type(f[:type])
+      "#{f[:name]}: #{default_value}"
+    end
+    init_params << 'doc_id: nil'
+    init_params << 'table_name: nil'
+    init_params_line = "def initialize(#{init_params.join(', ')})"
+
+    # Gerar @table_data (doc_id primeiro, depois os campos)
+    table_data_lines = ['doc_id: doc_id']
+    table_data_lines += fields.map do |f|
+      "#{f[:name]}: #{f[:name]}"
+    end
+    # Adiciona vírgulas a todos exceto o último
+    table_data_lines = table_data_lines.map.with_index do |line, index|
+      index < table_data_lines.length - 1 ? "#{line}," : line
+    end
+
+    <<~RUBY
+      require_relative '../../lib/features/model'
+
+      class #{model_name} < ChainDb::Features::Model
+        #{attr_accessor_line}
+
+        #{init_params_line}
+          # table name for the model
+          @table_name = table_name || '#{table_name}'
+
+          # table data
+          @table_data = {
+            #{table_data_lines.join("\n      ")}
+          }
+
+          # initialize the model
+          super()
+        end
+      end
+    RUBY
+  end
+
+  def default_value_for_type(type)
+    case type.downcase
+    when 'string'
+      "''"
+    when 'number'
+      'nil'
+    when 'array'
+      '[]'
+    when 'hash', 'object'
+      '{}'
+    else
+      'nil'
+    end
+  end
+
+  def pluralize(word)
+    # Pluralização simples - adiciona 's' no final
+    # Para casos especiais, pode ser expandido
+    if word.end_with?('y')
+      word[0..-2] + 'ies'
+    elsif word.end_with?('s', 'x', 'z', 'ch', 'sh')
+      word + 'es'
+    else
+      word + 's'
+    end
+  end
+end
+
+# Executar o gerador
+if __FILE__ == $PROGRAM_NAME
+  if ARGV.empty?
+    puts 'Uso: chaindb generate model ModelName field:type field:type ...'
+    puts 'Exemplo: chaindb generate model Message username:string message:string b64Image:string timestamp:number'
+    exit 1
+  end
+
+  ChainDbGenerator.run(ARGV)
+end

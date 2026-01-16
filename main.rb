@@ -5,5 +5,3 @@ require_relative 'lib/application'
 
 # Ponto de entrada principal da aplicação
 Application.new.run
-
-

@@ -25,7 +25,7 @@ module ChainDb::Features
 
       # puts response.parsed_response
 
-      raise response.parsed_response['message'] unless response.parsed_response['success']
+      return handle_error(response, 'get_history') unless response.parsed_response['success']
 
       response.parsed_response['data']
     end
@@ -51,7 +51,7 @@ module ChainDb::Features
                                       { data: @table_data.except(:doc_id), doc_id: @table_data[:doc_id] })
                  end
 
-      raise response.parsed_response['message'] unless response.parsed_response['success']
+      return handle_error(response, 'persist') unless response.parsed_response['success']
 
       result = response.parsed_response['data']
 
@@ -74,7 +74,7 @@ module ChainDb::Features
       response = Utils.post_request(uri, @chain_db_instance.auth,
                                     { criteria: criteria, limit: limit, reverse: reverse })
 
-      raise response.parsed_response['message'] unless response.parsed_response['success']
+      return handle_error(response, 'find_where') unless response.parsed_response['success']
 
       response.parsed_response['data']
     end
@@ -87,7 +87,7 @@ module ChainDb::Features
       response = Utils.post_request(uri, @chain_db_instance.auth,
                                     { criteria: criteria, limit: limit, reverse: reverse })
 
-      raise response.parsed_response['message'] unless response.parsed_response['success']
+      return handle_error(response, 'find_where_advanced') unless response.parsed_response['success']
 
       response.parsed_response['data']
     end
@@ -97,7 +97,7 @@ module ChainDb::Features
       uri = "#{@chain_db_instance.server}#{Constants.GET_TABLE(@table_name)}"
       response = Utils.get_request(uri, @chain_db_instance.auth)
 
-      raise response.parsed_response['message'] unless response.parsed_response['success']
+      return handle_error(response, 'last') unless response.parsed_response['success']
 
       response.parsed_response['data']
     end
@@ -107,13 +107,13 @@ module ChainDb::Features
       uri = "#{@chain_db_instance.server}#{Constants.GET_DOC(@table_name, doc_id)}"
       response = Utils.get_request(uri, @chain_db_instance.auth)
 
-      raise response.parsed_response['message'] unless response.parsed_response['success']
+      return handle_error(response, 'by_doc_id') unless response.parsed_response['success']
 
       response.parsed_response['data']
     end
 
     # convert the current doc to a hash
-    def to_h
+    def to_hash
       @table_data.transform_keys(&:to_sym)
     end
 
@@ -134,7 +134,12 @@ module ChainDb::Features
 
     # get all data from the table by criteria
     def self.all_where(criteria: {}, limit: 1000, reverse: true)
-      to_models(new.find_where(criteria: criteria, limit: limit, reverse: reverse))
+      result = new.find_where(criteria: criteria, limit: limit, reverse: reverse)
+
+      return nil if result.nil?
+      return nil if result.empty?
+
+      to_models(result)
     end
 
     # get data from the table by advanced criteria
@@ -143,26 +148,52 @@ module ChainDb::Features
     end
 
     # get data from the table by criteria
-    def self.where(criteria: {})
-      to_model(new.find_where(criteria: criteria, limit: limit)[0])
+    def self.where(criteria: {}, limit: 1000)
+      result = new.find_where(criteria: criteria, limit: limit, reverse: true)
+      return nil if result.nil?
+      return nil if result.empty?
+
+      to_model(result[0])
     end
 
     # get data from the table by advanced criteria
     def self.where_advanced(criteria: [], limit: 1000, reverse: true)
-      to_model(new.find_where_advanced(criteria: criteria, limit: limit, reverse: reverse)[0])
+      result = new.find_where_advanced(criteria: criteria, limit: limit, reverse: reverse)
+      return nil if result.nil? || result.empty?
+
+      to_model(result[0])
     end
 
     # convert the data to model
     def self.to_models(data)
+      return [] if data.nil?
+
       data.map { |item| to_model(item) }
     end
 
     # convert the data to model
     def self.to_model(data)
+      return nil if data.nil?
+
       new(**data.transform_keys(&:to_sym))
     end
 
     private
+
+    # Handle errors without interrupting execution
+    # Logs the error message and returns nil instead of raising
+    def handle_error(response, method_name = nil)
+      return true if response.parsed_response['success']
+
+      error_message = response.parsed_response['message'] || 'Unknown error'
+      method_info = method_name ? " in #{method_name}" : ''
+
+      puts "\n"
+      puts "[ERROR#{method_info}]: #{error_message}"
+      warn "[ERROR#{method_info}]: #{error_message}" if defined?(warn)
+
+      nil
+    end
 
     # def fetch
     #   uri = "#{@chain_db_instance.server}#{Constants.GET_TABLE(@table_name)}"

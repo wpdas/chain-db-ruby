@@ -18,7 +18,7 @@ module ChainDb::Features
     end
   end
 
-  class ChainDb
+  class Connection
     attr_accessor :server, :database, :auth
 
     @server = Constants::DEFAULT_API_SERVER
