@@ -48,6 +48,13 @@ class Application
       Product.all_where(criteria: { storage_id: current_storage.doc_id }, reverse: false).each do |product|
         puts product.to_hash
       end
+
+      # Product.all.each do |product|
+      #   puts product.to_hash
+      # end
+
+      # puts "\n"
+      # puts Product.last.to_hash
     end
 
     # puts '== create message =='
